@@ -1,0 +1,2 @@
+[run]
+omit=market/tests/*, .venv/*, marketAPI/migrations/*, manage.py, market/*, *test.py, marketAPI/tests.py

@@ -42,7 +42,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'djoser',
-    'django_extensions'
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
@@ -136,6 +136,7 @@ REST_FRAMEWORK = {
 
     ),
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle'
@@ -143,7 +144,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '30/minute',
         'user': '60/minute'
-    }
+    },
 }
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
@@ -159,7 +160,7 @@ DJOSER = {
     'PASSWORD_RESET_CONFIRM_URL': '#/password/reset/confirm/{uid}/{token}',
     'USERNAME_RESET_CONFIRM_URL': '#/username/reset/confirm/{uid}/{token}',
     'ACTIVATION_URL': '#/activate/{uid}/{token}',
-    'SEND_CONFIRMATION_EMAIL': True, # TODO
+    'SEND_CONFIRMATION_EMAIL': False, # TODO
     'USERNAME_FIELD': 'email',
     'SERIALIZERS': {
         'user_create': 'marketAPI.serializer.UserCreateSerializer',
