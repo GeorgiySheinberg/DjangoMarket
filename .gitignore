@@ -1,0 +1,10 @@
+shop1.yaml
+yamltest.py
+
+.env
+.idea/
+market/db.sqlite3
+market/market/__pycache__/wsgi.cpython-312.pyc
+market/marketAPI/__pycache__/
+market/marketAPI/migrations/0001_initial.py
+market/marketAPI/migrations/__pycache__/
