@@ -38,11 +38,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'marketAPI',
+
     'rest_framework',
     'rest_framework.authtoken',
+
     'djoser',
+
     'django_extensions',
+
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
 ]
 
 MIDDLEWARE = [
@@ -145,6 +152,7 @@ REST_FRAMEWORK = {
         'anon': '30/minute',
         'user': '60/minute'
     },
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
@@ -175,4 +183,15 @@ DJOSER = {
             'username_reset': 'djoser.email.UsernameResetEmail',
         },
 
+}
+
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Market API',
+    'DESCRIPTION': 'Market API',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
 }
