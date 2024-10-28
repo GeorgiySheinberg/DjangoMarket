@@ -27,7 +27,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
 
     address = models.CharField(max_length=200, null=True, blank=True)
-    shop = models.OneToOneField('Shop', on_delete=models.CASCADE, null=True, blank=True)
+    shop = models.OneToOneField('Shop', on_delete=models.CASCADE, null=True, blank=True, related_name='user')
     type = models.ForeignKey('UserType', on_delete=models.CASCADE, default=2)
     objects = UserManager()
 
@@ -36,7 +36,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class Shop(models.Model):
     name = models.CharField(max_length=100)
-    accepting_status = models.BooleanField(default=False)
+    accepting_status = models.BooleanField(default=True)
     url = models.CharField(max_length=200)
 
     def __str__(self):
@@ -48,6 +48,8 @@ class UserType(models.Model):
 
     def __str__(self):
         return self.type
+
+
 class Order(models.Model):
     user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='order')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -57,7 +59,7 @@ class Order(models.Model):
     product = models.ManyToManyField('Product', related_name='order', blank=True, through="OrderProduct")
     status = models.CharField(max_length=30)
     def __str__(self):
-        return str(self.user)
+        return str(self.pk)
 
 
 class OrderProduct(models.Model):
@@ -84,6 +86,9 @@ class Product(models.Model):
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=100, null=False)
+
+    def __str__(self):
+        return self.name
 
 
 class ExtraParameter(models.Model):

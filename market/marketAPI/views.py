@@ -1,3 +1,5 @@
+from itertools import product
+
 from django.shortcuts import render
 
 import yaml
@@ -15,12 +17,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import ProductCategory, Product, ExtraParameter, BasketProduct, OrderProduct, Order, UserType, \
-    Basket
+    Basket, Shop
 from .serializer import DetailedProductSerializer, BasketProductSerializer, \
     OrderProductSerializer, ProductSerializer, BasketProductCreateSerializer, MarketUserSerializer
 
 import environ
 
+from .tasks import send_order_confirmation_to_suppliers, send_order_confirmation_email
 
 logger = logging.getLogger(__name__)
 env = environ.Env()
@@ -169,14 +172,15 @@ class ProductView(GenericAPIView):
 
         Возвращает:
             Response: Ответ с сериализованными данными о продуктах. Если `pk` не указан,
-            возвращает список всех продуктов. Если `pk` указан, возвращает детали конкретного продукта.
+            возвращает список всех продуктов (с фильтрацией по магазинам, которые принимают заказы).
+            Если `pk` указан, возвращает детали конкретного продукта.
         """
         if pk is None:
-            products = Product.objects.all()
-            serializer = self.get_serializer_class()(products, many=True)  # Используем сериализатор для списка
+            products = Product.objects.filter(shop__accepting_status=True)
+            serializer = self.get_serializer_class()(products, many=True)
         else:
             product = Product.objects.get(pk=pk)
-            serializer = self.get_serializer_class()(product)  # Используем сериализатор для детали продукта
+            serializer = self.get_serializer_class()(product)
         return Response(serializer.data)
 
 
@@ -197,7 +201,7 @@ class BasketProductViewSet(viewsets.GenericViewSet):
         update(request, *args, **kwargs): Обновляет существующий продукт в корзине.
     """
     queryset = BasketProduct.objects.all()
-    serializer_class = BasketProductSerializer  # Укажите сериализатор
+    serializer_class = BasketProductSerializer
 
     def list(self, request):
         """
@@ -213,7 +217,7 @@ class BasketProductViewSet(viewsets.GenericViewSet):
         basket = getattr(request.user, 'basket', None)
 
         if basket is None:
-            return Response([], status=status.HTTP_200_OK)  # Если корзина не найдена, возвращаем пустой список
+            return Response([], status=status.HTTP_200_OK)
 
         # Получаем продукты в корзине
         queryset = self.queryset.filter(basket=basket)
@@ -252,7 +256,7 @@ class BasketProductViewSet(viewsets.GenericViewSet):
            **kwargs: Ключевые аргументы, содержащие идентификатор продукта.
 
        Возвращает:
-           Response: Ответ с информацией о обновленном продукте и статусом 200,
+           Response: Ответ с информацией об обновленном продукте и статусом 200,
            если обновление прошло успешно. В противном случае возвращает ошибки валидации и статус 400.
        """
         basket_product = self.get_object()
@@ -267,9 +271,9 @@ class OrderProductModelViewSet(viewsets.ModelViewSet):
     """
         Обработчик для управления заказами продуктов.
 
-        Этот класс предоставляет методы для создания, чтения, обновления и удаления экземпляров OrderProduct через REST API. Основное внимание уделяется
-        созданию нового заказа продукта, который включает в себя обработку корзины
-        пользователя и отправку подтверждения заказа по электронной почте.
+        Этот класс предоставляет методы для создания, чтения, обновления и удаления экземпляров OrderProduct
+        через REST API. Основное внимание уделяется созданию нового заказа продукта, который включает в себя
+        обработку корзины пользователя и отправку подтверждения заказа по электронной почте.
 
         Атрибуты:
             queryset (QuerySet): Набор данных для модели OrderProduct.
@@ -283,7 +287,9 @@ class OrderProductModelViewSet(viewsets.ModelViewSet):
         """
         Создает новый заказ на основе продуктов в корзине пользователя.
 
-        Этот метод извлекает продукты из корзины текущего пользователя, создает новый экземпляр заказа и соответствующие экземпляры OrderProduct. Он также рассчитывает общую стоимость заказа, очищает корзину и отправляет подтверждение заказа по электронной почте.
+        Этот метод извлекает продукты из корзины текущего пользователя, создает новый экземпляр заказа и
+        соответствующие экземпляры OrderProduct. Он также рассчитывает общую стоимость заказа, очищает корзину
+        и отправляет подтверждение заказа по электронной почте.
 
         Параметры:
             request (Request): Объект запроса, содержащий данные о заказе и
@@ -315,59 +321,21 @@ class OrderProductModelViewSet(viewsets.ModelViewSet):
         order.save()
         basket.position.all().delete()
 
-        send_order_confirmation_email(order.pk, products_list, total_price, request.user.email)
+        send_order_confirmation_email.delay(order.pk, products_list, total_price, request.user.email)
+
+        data_for_suppliers = [
+            {
+                'product': product.name,
+                'shop': product.shop.name,
+                'email': product.shop.user.email
+            }
+            for product in order.product.all()
+        ]
+        send_order_confirmation_to_suppliers.delay(data_for_suppliers)
+
 
         return Response({'message': f'Заказ № {order.pk} успешно создан'}, status=status.HTTP_201_CREATED)
 
-def send_order_confirmation_email(order, products_list, total_price, to_email):
-    """
-    Отправляет письмо с подтверждением заказа пользователю.
 
-    Параметры:
-        order (Order): Заказ, для которого отправляется письмо.
-        products_list (list): Список продуктов в заказе.
-        total_price (float): Общая стоимость заказа.
-        to_email (str): Электронная почта пользователя.
-    """
-    subject = 'Подтверждение заказа'
-    message = (
-        f'Заказ №{order} создан успешно!\n\n'
-        f'Список товаров:\n{", ".join(products_list)}\n\n'
-        f'Общая стоимость: {total_price} руб.'
-    )
-    from_email = env("EMAIL_HOST")
-
-
-    send_mail(subject, message, from_email, [to_email])
-
-@receiver(post_save, sender=OrderProduct)
-def send_supplier_email_async(sender, instance, created, **kwargs):
-    """
-    Обработчик сигнала для отправки электронного письма поставщику при создании нового заказа продукта.
-
-    Этот метод срабатывает после сохранения экземпляра OrderProduct.
-    Если экземпляр был создан (created=True), функция извлекает все продукты из заказа
-    и отправляет уведомление каждому поставщику о том, что продукт был заказан.
-
-    Параметры:
-        sender (Model): Модель, которая отправила сигнал (OrderProduct).
-        instance (OrderProduct): Экземпляр OrderProduct, который был создан.
-        created (bool): Указывает, был ли экземпляр создан (True) или обновлен (False).
-        **kwargs: Дополнительные аргументы, переданные сигналом.
-
-    Примечание:
-        Письмо отправляется на адрес электронной почты, связанный с магазином,
-        которому принадлежит продукт. В случае возникновения ошибок при отправке письма, они не будут игнорироваться (fail_silently=False).
-    """
-    if created:
-        products = instance.order.product.all()
-
-        for product in products:
-            shop = product.shop
-            supplier_email = shop.user.email
-            subject = f"Order notification: {product.name} has been ordered"
-            message = (f"Dear {shop.name},\n\nWe have received an order for {product.name}. Please prepare"
-                       f" the product for shipping.\n\nBest regards, [Your Company Name]")
-
-
-            send_mail(subject, message, env("EMAIL_HOST"), [supplier_email], fail_silently=False)
+def trigger_error(request):
+    division_by_zero = 1 / 0
